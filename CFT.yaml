@@ -1,0 +1,97 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Transform: 'AWS::Serverless-2016-10-31'
+
+Description: 'AWS CloudFormation (AWS SAM) template for a Lambda to auto remove open to world security group ingress rules.'
+
+Parameters:
+  RoleARNParam:
+    Type: 'String'
+    Description: 'ARN of IAM role assumed by Lambda function.'
+    ConstraintDescription: 'This parameter is required.'
+    MinLength: '1'
+  EmailSubject:
+    Type: 'String'
+    Description: 'Subject of security groups email.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+  SecretsManagerName:
+    Type: 'String'
+    Description: 'Name of Secrets Manager secret where email password is stored.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+  SecretsManagerKeyName:
+    Type: 'String'
+    Description: 'Key of secret dictionary.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+  EmailFrom:
+    Type: 'String'
+    Description: 'Email ID from which email alerts will be sent.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+  EmailToList:
+    Type: 'String'
+    Description: 'Comma separated list of email IDs to which email alerts will be sent.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+  SecurityGroupsList:
+    Type: 'String'
+    Description: 'Comma separated list of IP ranges which will auto replace the faulty rules.'
+  ExceptionGroupIDs:
+    Type: 'String'
+    Description: 'Comma separated list of security group IDs which will be exempt from security group check.'
+  EnvironmentName:
+    Type: 'String'
+    Description: 'Name of account/environment, which is sent in email body.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+  LambdaCodeBucket:
+    Type: 'String'
+    Description: 'S3 Bucket where Lambda deployment package zip is stored.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+  LambdaCodeKey:
+    Type: 'String'
+    Description: 'Object key in S3 Bucket where Lambda deployment package zip is stored.'
+    MinLength: '1'
+    ConstraintDescription: 'This parameter is required.'
+
+Resources:
+  SecurityGroupFilterFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: 'SecurityGroupFilter'
+      CodeUri:
+        Bucket: !Ref LambdaCodeBucket
+        Key: !Ref LambdaCodeKey
+      Handler: 'lambda_function.lambda_handler'
+      Runtime: 'python3.8'
+      Timeout: 30
+      Role: !Ref RoleARNParam
+      Events:
+        SecurityGroupIngress:
+          Type: 'EventBridgeRule'
+          Properties:
+            Pattern:
+              detail-type:
+                - 'AWS API Call via CloudTrail'
+              source:
+                - 'aws.ec2'
+              detail:
+                eventSource:
+                  - 'ec2.amazonaws.com'
+                eventName:
+                  - 'AuthorizeSecurityGroupIngress'
+      Environment:
+        Variables:
+          SECURITY_GROUPS_LIST: !Ref SecurityGroupsList
+          EXCEPTION_GROUP_IDS: !Ref ExceptionGroupIDs
+          EMAIL_FROM: !Ref EmailFrom
+          EMAIL_TO: !Ref EmailToList
+          EMAIL_SUBJECT: !Ref EmailSubject
+          SECRET_NAME: !Ref SecretsManagerName
+          SECRET_KEY_NAME: !Ref SecretsManagerKeyName
+          ENVIRONMENT_NAME: !Ref EnvironmentName
+
